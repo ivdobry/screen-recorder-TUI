@@ -14,13 +14,14 @@ from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.suggester import Suggester
 from textual.widgets import (
-    Button, DirectoryTree, Footer, Header, Input, Label, RichLog, Static, Switch,
+    Button, DirectoryTree, Footer, Header, Input, Label, RadioButton, RadioSet, RichLog, Static,
 )
 
 OUTPUT_DIR = Path.home() / "Videos"
 # --no-zenity: always use the in-terminal folder browser (handy for testing it)
 USE_ZENITY = "--no-zenity" not in sys.argv
 CONFIG_FILE = Path.home() / ".config" / "screen-recorder-tui" / "config.json"
+AUDIO_SOURCES = {"off": "Off", "mic": "Microphone", "system": "System sound"}
 
 
 def load_config() -> dict:
@@ -48,6 +49,14 @@ async def run(*cmd: str) -> tuple[int, str]:
     )
     out, _ = await proc.communicate()
     return proc.returncode, out.decode().strip()
+
+
+async def system_audio_device() -> str | None:
+    """Monitor source of the current default output, i.e. "what you hear"."""
+    if not shutil.which("pactl"):
+        return None
+    code, sink = await run("pactl", "get-default-sink")
+    return f"{sink}.monitor" if code == 0 and sink else None
 
 
 async def focused_output() -> str | None:
@@ -166,9 +175,9 @@ class Recorder(App):
     }
     #output > Label { height: 3; content-align: left middle; color: $text-muted; }
     #output Input, #browse { width: 100%; }
-    #name, #audio-row { column-span: 2; }
-    #audio-row { height: 3; }
-    #audio-row Label { height: 3; content-align: left middle; padding: 0 1; }
+    #name, #audio { column-span: 2; }
+    #audio { layout: horizontal; width: 100%; height: 3; }
+    #audio RadioButton { width: auto; margin-right: 4; }
 
     #activity { height: 1fr; min-height: 6; margin-bottom: 0; }
     #activity RichLog {
@@ -182,7 +191,7 @@ class Recorder(App):
         ("f", "full", "Full screen"),
         ("s", "region", "Section"),
         ("x", "stop", "Stop"),
-        ("a", "toggle_audio", "Audio"),
+        ("a", "cycle_audio", "Audio"),
         ("b", "browse", "Browse"),
         ("q", "quit", "Quit"),
     ]
@@ -215,9 +224,11 @@ class Recorder(App):
                 yield Label("Name")
                 yield Input(placeholder="recording-<date>-<time>  (default)", id="name")
                 yield Label("Audio")
-                with Horizontal(id="audio-row"):
-                    yield Switch(config.get("audio", False), id="audio")
-                    yield Label("Record audio  [dim]A[/]")
+                # Older configs stored a plain on/off "audio" flag, which meant the mic
+                source = config.get("audio_source") or ("mic" if config.get("audio") else "off")
+                with RadioSet(id="audio"):
+                    for key, label in AUDIO_SOURCES.items():
+                        yield RadioButton(label, value=key == source, id=f"audio-{key}")
             with Vertical(id="activity", classes="card") as card:
                 card.border_title = "Activity"
                 yield RichLog(markup=True, wrap=True)
@@ -250,8 +261,13 @@ class Recorder(App):
         if event.input.id == "dir" and Path(event.value.strip()).expanduser().is_dir():
             save_config(folder=event.value.strip())
 
-    def on_switch_changed(self, event: Switch.Changed) -> None:
-        save_config(audio=event.value)
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        if event.radio_set.id == "audio":
+            save_config(audio_source=self.audio_source())
+
+    def audio_source(self) -> str:
+        pressed = self.query_one("#audio", RadioSet).pressed_button
+        return pressed.id.removeprefix("audio-") if pressed else "off"
 
     def on_input_submitted(self) -> None:
         self.set_focus(None)  # give the keys back to the F/S/X shortcuts
@@ -275,7 +291,7 @@ class Recorder(App):
         self.query_one("#full", Button).disabled = recording
         self.query_one("#region", Button).disabled = recording
         self.query_one("#stop", Button).disabled = not recording
-        self.query_one("#audio", Switch).disabled = recording
+        self.query_one("#audio", RadioSet).disabled = recording
         self.query_one("#dir", Input).disabled = recording
         self.query_one("#name", Input).disabled = recording
         self.query_one("#browse", Button).disabled = recording
@@ -298,10 +314,13 @@ class Recorder(App):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         await self.run_action(event.button.id)
 
-    def action_toggle_audio(self) -> None:
-        switch = self.query_one("#audio", Switch)
-        if not switch.disabled:
-            switch.toggle()
+    def action_cycle_audio(self) -> None:
+        radio_set = self.query_one("#audio", RadioSet)
+        if radio_set.disabled:
+            return
+        buttons = list(radio_set.query(RadioButton))
+        current = next((i for i, b in enumerate(buttons) if b.value), -1)
+        buttons[(current + 1) % len(buttons)].value = True
 
     async def action_browse(self) -> None:
         if self.proc:
@@ -362,10 +381,17 @@ class Recorder(App):
         except OSError as e:
             self.log_line(f"[red]Can't use folder {target.parent}: {e.strerror}[/]")
             return
+        cmd = ["wf-recorder", "-y", *extra_args, "-f", str(target)]
+        source = self.audio_source()
+        if source == "mic":
+            cmd.append("--audio")  # default input device
+        elif source == "system":
+            device = await system_audio_device()
+            if not device:
+                self.log_line("[red]Can't find the system audio device (is pactl installed?)[/]")
+                return
+            cmd.append(f"--audio={device}")
         self.current_file = target
-        cmd = ["wf-recorder", "-y", *extra_args, "-f", str(self.current_file)]
-        if self.query_one("#audio", Switch).value:
-            cmd.append("--audio")
 
         self.log_line(f"[bold cyan]$ {' '.join(cmd)}[/]")
         self.proc = await asyncio.create_subprocess_exec(

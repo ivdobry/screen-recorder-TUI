@@ -11,7 +11,7 @@ Built with [Textual](https://textual.textualize.io/).
 - **Full screen**: records the currently focused monitor (detected via `niri msg` or `hyprctl`; falls back to wf-recorder's default output)
 - **Section**: pick an area with `slurp`, then record only that region
 - **Stop**: sends `SIGINT` to wf-recorder (the same as Ctrl+C), so the file is closed properly
-- Optional audio recording toggle
+- Audio source: **Off**, **Microphone** (default input) or **System sound** (what's playing through your speakers)
 - Live timer while recording
 - Desktop notification with the file path when a recording is saved
 - Choose the folder (with folder-name suggestions) and file name for each recording, or keep the defaults: `~/Videos/recording-YYYYMMDD-HHMMSS.mp4`
@@ -75,7 +75,7 @@ screen-recorder
 | `F` | Full screen  | `wf-recorder -o <focused output> -f <file>`      |
 | `S` | Section      | `wf-recorder -g "$(slurp)" -f <file>`            |
 | `X` | Stop         | sends `SIGINT` to wf-recorder                    |
-| `A` | Toggle audio | adds `--audio`                                   |
+| `A` | Audio source | cycles Off → Microphone → System sound           |
 | `B` | Browse       | opens a file dialog to choose folder and name    |
 | `Q` | Quit         | stops any active recording first, then exits     |
 
@@ -88,6 +88,18 @@ You can also click the buttons with the mouse.
 - **Browse [B]** opens your system's *Save as* dialog (via `zenity`) to choose the folder and name. Without zenity, it opens a folder browser inside the terminal instead. Run `./run.sh --no-zenity` to always use the terminal browser.
 - If the file already exists, `-1`, `-2`, … is added to the name, so recordings are never overwritten.
 - Press `Enter` or `Esc` to leave a text field and use the keyboard shortcuts again.
+
+### Audio
+
+| Option       | What it records                           | wf-recorder flag                         |
+|--------------|-------------------------------------------|------------------------------------------|
+| Off          | No audio                                  | none                                     |
+| Microphone   | Your default input device                 | `--audio`                                |
+| System sound | Everything playing on your default output | `--audio=<default sink>.monitor`         |
+
+System sound needs `pactl` (included with PipeWire/PulseAudio). The output device is looked up each time a recording starts, so switching to headphones is picked up automatically.
+
+Recording the microphone and system sound at the same time isn't supported yet, because wf-recorder only records from one audio device.
 
 ### Tips
 
@@ -106,6 +118,6 @@ Your settings are saved to `~/.config/screen-recorder-tui/config.json` and resto
 
 - **Theme**: press `Ctrl+P` → *Change theme*
 - **Save to folder**: the last existing folder you typed or picked with Browse
-- **Audio**: whether the audio toggle is on
+- **Audio**: the selected audio source
 
 The file name is not remembered, so each session starts with the timestamp default. To reset everything, delete the config file. The built-in default folder (`~/Videos`) is `OUTPUT_DIR` at the top of `recorder.py`.
