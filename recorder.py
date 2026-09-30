@@ -24,6 +24,7 @@ OUTPUT_DIR = Path.home() / "Videos"
 USE_ZENITY = "--no-zenity" not in sys.argv
 CONFIG_FILE = Path.home() / ".config" / "screen-recorder-tui" / "config.json"
 AUDIO_SOURCES = {"off": "Off", "mic": "Microphone", "system": "System sound"}
+COUNTDOWNS = (0, 3, 5, 10)  # seconds; 0 = start straight away
 MAX_RECENT = 20
 
 
@@ -262,10 +263,13 @@ class Recorder(App):
     #status-hint { color: $text-muted; }
     #status-card.recording { border: round $error; background: $error 10%; }
     #status-card.recording #status { color: $error; }
+    #status-card.counting { border: round $warning; background: $warning 10%; }
+    #status-card.counting #status { color: $warning; }
 
     #buttons { height: auto; margin-bottom: 1; }
     #buttons Button { width: 1fr; margin: 0 1 0 0; }
     #buttons Button:last-of-type { margin-right: 0; }
+    #buttons #cycle_countdown { width: 14; min-width: 14; }
     Button:focus { text-style: bold; }
 
     /* label | field | button — every row shares the same columns */
@@ -282,6 +286,8 @@ class Recorder(App):
     #name, #audio { column-span: 2; }
     #audio { layout: horizontal; width: 100%; height: 3; }
     #audio RadioButton { width: auto; margin-right: 4; }
+    /* the cursor highlight is only useful while navigating with the keyboard */
+    #audio:blur > RadioButton.-selected > .toggle--label { background: transparent; }
 
     #bottom { height: 1fr; min-height: 10; }
     #bottom TabPane { padding: 0; }
@@ -303,6 +309,7 @@ class Recorder(App):
         ("s", "region", "Section"),
         ("x", "stop", "Stop"),
         ("a", "cycle_audio", "Audio"),
+        ("t", "cycle_countdown", "Countdown"),
         ("b", "browse", "Browse"),
         # Recordings list: the keys are shown on its buttons, so keep the footer short
         Binding("p", "play", "Play", show=False),
@@ -314,11 +321,14 @@ class Recorder(App):
     ]
 
     proc: asyncio.subprocess.Process | None = None
+    countdown = None  # the countdown worker, while one is running
     started_at = 0.0
     current_file: Path | None = None
 
     def compose(self) -> ComposeResult:
         config = load_config()
+        delay = config.get("countdown", 3)
+        self.delay = delay if delay in COUNTDOWNS else 3
         yield Header(icon="◉")
         with Vertical(id="main"):
             with Vertical(id="status-card", classes="card") as card:
@@ -328,6 +338,7 @@ class Recorder(App):
             with Horizontal(id="buttons"):
                 yield Button("▣  Full screen  [dim]F[/]", id="full", variant="primary")
                 yield Button("▢  Section  [dim]S[/]", id="region", variant="primary")
+                yield Button(id="cycle_countdown", tooltip="Countdown before recording starts")
                 yield Button("■  Stop  [dim]X[/]", id="stop", variant="error", disabled=True)
             with Grid(id="output", classes="card") as card:
                 card.border_title = "Output"
@@ -375,6 +386,7 @@ class Recorder(App):
             table.add_columns("Name", "Folder", "Length", "Size", "Recorded"),
         ))
         self.refresh_recordings()
+        self.show_delay()
         self.set_recording(False)
         self.set_focus(None)  # nothing focused, so the single-key shortcuts work at once
         self.set_interval(1, self.tick)
@@ -403,6 +415,13 @@ class Recorder(App):
         if event.radio_set.id == "audio":
             save_config(audio_source=self.audio_source())
 
+    def countdown_seconds(self) -> int:
+        return self.delay
+
+    def show_delay(self) -> None:
+        text = f"{self.delay} s" if self.delay else "Off"
+        self.query_one("#cycle_countdown", Button).label = f"◔ {text}  [dim]T[/]"
+
     def audio_source(self) -> str:
         pressed = self.query_one("#audio", RadioSet).pressed_button
         return pressed.id.removeprefix("audio-") if pressed else "off"
@@ -425,15 +444,17 @@ class Recorder(App):
     def log_line(self, text: str) -> None:
         self.query_one(RichLog).write(text)
 
-    def set_recording(self, recording: bool) -> None:
+    def set_recording(self, recording: bool, counting: bool = False) -> None:
         self.query_one("#full", Button).disabled = recording
         self.query_one("#region", Button).disabled = recording
         self.query_one("#stop", Button).disabled = not recording
         self.query_one("#audio", RadioSet).disabled = recording
+        self.query_one("#cycle_countdown", Button).disabled = recording
         self.query_one("#dir", Input).disabled = recording
         self.query_one("#name", Input).disabled = recording
         self.query_one("#browse", Button).disabled = recording
-        self.query_one("#status-card").set_class(recording, "recording")
+        self.query_one("#status-card").set_class(recording and not counting, "recording")
+        self.query_one("#status-card").set_class(counting, "counting")
         if not recording:
             self.query_one("#status", Static).update("○  READY")
             self.query_one("#status-hint", Static).update(
@@ -584,16 +605,26 @@ class Recorder(App):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         await self.run_action(event.button.id)
 
-    def action_cycle_audio(self) -> None:
-        radio_set = self.query_one("#audio", RadioSet)
+    def cycle_radio(self, radio_id: str) -> None:
+        radio_set = self.query_one(radio_id, RadioSet)
         if radio_set.disabled:
             return
         buttons = list(radio_set.query(RadioButton))
         current = next((i for i, b in enumerate(buttons) if b.value), -1)
         buttons[(current + 1) % len(buttons)].value = True
 
+    def action_cycle_audio(self) -> None:
+        self.cycle_radio("#audio")
+
+    def action_cycle_countdown(self) -> None:
+        if self.busy():
+            return
+        self.delay = COUNTDOWNS[(COUNTDOWNS.index(self.delay) + 1) % len(COUNTDOWNS)]
+        save_config(countdown=self.delay)
+        self.show_delay()
+
     async def action_browse(self) -> None:
-        if self.proc:
+        if self.busy():
             return
         folder_input = self.query_one("#dir", Input)
         name_input = self.query_one("#name", Input)
@@ -625,14 +656,17 @@ class Recorder(App):
 
         self.push_screen(FolderPicker(folder), picked)
 
+    def busy(self) -> bool:
+        return bool(self.proc) or self.countdown is not None
+
     async def action_full(self) -> None:
-        if self.proc:
+        if self.busy():
             return
         output = await focused_output()
-        await self.start(["-o", output] if output else [])
+        self.begin(["-o", output] if output else [])
 
     async def action_region(self) -> None:
-        if self.proc:
+        if self.busy():
             return
         if not shutil.which("slurp"):
             self.log_line("[red]slurp not found — needed to select a section[/]")
@@ -642,7 +676,33 @@ class Recorder(App):
         if code != 0 or not geometry:
             self.log_line("[yellow]Selection cancelled[/]")
             return
-        await self.start(["-g", geometry])
+        self.begin(["-g", geometry])
+
+    def begin(self, extra_args: list[str]) -> None:
+        """Start recording, after the countdown if one is set."""
+        # A worker, so the app keeps handling keys (X cancels) while it counts down
+        self.countdown = self.run_worker(self.count_down_then_start(extra_args), group="countdown")
+
+    async def count_down_then_start(self, extra_args: list[str]) -> None:
+        seconds = self.countdown_seconds()
+        try:
+            if seconds:
+                self.set_recording(True, counting=True)
+                if shutil.which("notify-send"):
+                    spawn("notify-send", "-t", str(seconds * 1000), "Screen Recorder",
+                          f"Recording starts in {seconds} s")
+                for left in range(seconds, 0, -1):
+                    self.query_one("#status", Static).update(f"◔  STARTING IN {left}…")
+                    self.query_one("#status-hint", Static).update("Press X to cancel")
+                    await asyncio.sleep(1)
+                self.set_recording(False)
+        except asyncio.CancelledError:
+            self.set_recording(False)
+            self.log_line("[yellow]Countdown cancelled[/]")
+            raise
+        finally:
+            self.countdown = None
+        await self.start(extra_args)
 
     async def start(self, extra_args: list[str]) -> None:
         target = self.target_file()
@@ -703,6 +763,9 @@ class Recorder(App):
             self.query_one("#bottom", TabbedContent).active = "tab-activity"
 
     async def action_stop(self) -> None:
+        if self.countdown is not None:
+            self.countdown.cancel()
+            return
         if self.proc and self.proc.returncode is None:
             self.log_line("Stopping…")
             self.proc.send_signal(signal.SIGINT)  # same as Ctrl+C: finalises the file

@@ -12,6 +12,7 @@ Built with [Textual](https://textual.textualize.io/).
 - **Section**: pick an area with `slurp`, then record only that region
 - **Stop**: sends `SIGINT` to wf-recorder (the same as Ctrl+C), so the file is closed properly
 - Audio source: **Off**, **Microphone** (default input) or **System sound** (what's playing through your speakers)
+- Countdown before recording starts (off, 3, 5 or 10 seconds) so you can get ready or switch windows
 - Live timer while recording
 - Desktop notification with the file path when a recording is saved
 - **Recordings** list of your latest recordings: play, show in folder, copy path, rename or delete
@@ -78,8 +79,9 @@ screen-recorder
 |-----|--------------|--------------------------------------------------|
 | `F` | Full screen  | `wf-recorder -o <focused output> -f <file>`      |
 | `S` | Section      | `wf-recorder -g "$(slurp)" -f <file>`            |
-| `X` | Stop         | sends `SIGINT` to wf-recorder                    |
+| `X` | Stop         | sends `SIGINT` to wf-recorder (or cancels the countdown) |
 | `A` | Audio source | cycles Off → Microphone → System sound           |
+| `T` | Countdown    | cycles Off → 3 s → 5 s → 10 s                    |
 | `B` | Browse       | opens a file dialog to choose folder and name    |
 | `Q` | Quit         | stops any active recording first, then exits     |
 
@@ -92,6 +94,12 @@ You can also click the buttons with the mouse.
 - **Browse [B]** opens your system's *Save as* dialog (via `zenity`) to choose the folder and name. Without zenity, it opens a folder browser inside the terminal instead. Run `./run.sh --no-zenity` to always use the terminal browser.
 - If the file already exists, `-1`, `-2`, … is added to the name, so recordings are never overwritten.
 - Press `Enter` or `Esc` to leave a text field and use the keyboard shortcuts again.
+
+### Countdown
+
+With a countdown set (3 s by default), pressing `F`, or finishing your selection with `S`, doesn't start recording straight away. The Status card turns amber and counts down (*STARTING IN 3… 2… 1…*), then recording starts. A desktop notification also tells you when it will start, in case you've already switched away from the terminal. Press `X` to cancel.
+
+To change the countdown, click the **◔** button next to Stop or press `T`. It cycles Off → 3 s → 5 s → 10 s, and the button shows the current setting. Choose **Off** to start immediately.
 
 ### Audio
 
@@ -121,7 +129,7 @@ Files you move or delete outside the app disappear from the list automatically. 
 
 ### Tips
 
-- A full-screen recording includes the terminal running the TUI. Switch to another workspace after starting, or use **Section** to leave it out.
+- A full-screen recording includes the terminal running the TUI. Use the countdown to switch to another workspace before it starts, or use **Section** to leave it out.
 - To stop a recording without going back to the terminal, bind this to a key in your compositor config:
 
   ```bash
@@ -137,6 +145,7 @@ Your settings are saved to `~/.config/screen-recorder-tui/config.json` and resto
 - **Theme**: press `Ctrl+P` → *Change theme*
 - **Save to folder**: the last existing folder you typed or picked with Browse
 - **Audio**: the selected audio source
+- **Countdown**: the countdown length
 - **Recordings**: the list of recent recordings
 
 The file name is not remembered, so each session starts with the timestamp default. To reset everything, delete the config file. The built-in default folder (`~/Videos`) is `OUTPUT_DIR` at the top of `recorder.py`.
