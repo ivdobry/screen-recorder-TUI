@@ -163,9 +163,9 @@ class Recorder(App):
         yield Header()
         yield Static("● Idle", id="status")
         with Horizontal(id="buttons"):
-            yield Button("Full screen [F]", id="full", variant="primary")
-            yield Button("Section [S]", id="region", variant="primary")
-            yield Button("Stop [X]", id="stop", variant="error", disabled=True)
+            yield Button(r"Full screen \[F]", id="full", variant="primary")
+            yield Button(r"Section \[S]", id="region", variant="primary")
+            yield Button(r"Stop \[X]", id="stop", variant="error", disabled=True)
         with Horizontal(id="save"):
             yield Label("Save to")
             yield Input(
@@ -173,7 +173,7 @@ class Recorder(App):
             )
             yield Label("Name")
             yield Input(placeholder="recording-<date>-<time> (default)", id="name")
-            yield Button("Browse [B]", id="browse")
+            yield Button(r"Browse \[B]", id="browse")
         with Horizontal(id="options"):
             yield Label("Record audio")
             yield Switch(config.get("audio", False), id="audio")

@@ -4,6 +4,8 @@ A small terminal UI for [wf-recorder](https://github.com/ammen99/wf-recorder) on
 
 Built with [Textual](https://textual.textualize.io/).
 
+![Screen Recorder TUI](docs/screenshot.svg)
+
 ## Features
 
 - **Full screen**: records the currently focused monitor (detected via `niri msg` or `hyprctl`; falls back to wf-recorder's default output)
@@ -40,7 +42,21 @@ cd screen-recorder-TUI
 
 - Use a different command name: `./install.sh srec`
 - Install to another folder: `BIN_DIR=/some/dir ./install.sh`
-- Uninstall: `rm ~/.local/bin/screen-recorder`
+
+## Uninstall
+
+```bash
+# 1. Remove the command (use the name/folder you installed with, if you changed them)
+rm ~/.local/bin/screen-recorder
+
+# 2. Remove saved settings (theme, folder, audio)
+rm -r ~/.config/screen-recorder-tui
+
+# 3. Remove the app itself, including its virtualenv
+rm -rf /path/to/screen-recorder-TUI
+```
+
+Your recordings are not touched. They stay wherever you saved them (by default `~/Videos`).
 
 ## Usage
 
