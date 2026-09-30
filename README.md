@@ -33,15 +33,22 @@ sudo pacman -S wf-recorder slurp libnotify zenity
 ```bash
 git clone https://github.com/ivdobry/screen-recorder-TUI.git
 cd screen-recorder-TUI
-python -m venv .venv
-.venv/bin/pip install -r requirements.txt
+./install.sh
 ```
+
+`install.sh` creates the virtualenv, installs the dependencies and links a `screen-recorder` command into `~/.local/bin`. The link points at your clone, so a `git pull` updates the command too; don't move or delete the folder afterwards.
+
+- Use a different command name: `./install.sh srec`
+- Install to another folder: `BIN_DIR=/some/dir ./install.sh`
+- Uninstall: `rm ~/.local/bin/screen-recorder`
 
 ## Usage
 
 ```bash
-./run.sh
+screen-recorder
 ```
+
+(or `./run.sh` from the project folder without installing)
 
 | Key | Action       | Command it runs                                  |
 |-----|--------------|--------------------------------------------------|
