@@ -161,11 +161,23 @@ screen_recorder/
   config.py      settings and the recent recordings list
   system.py      calls to other programs (wf-recorder helpers, slurp, pactl, xdg-open, …)
   util.py        small helpers
+tests/           pytest tests (see Development)
 run.sh           starts the app with the project's virtualenv
 install.sh       installs the screen-recorder command
 ```
 
 Run it from the project folder with `./run.sh`, or `.venv/bin/python -m screen_recorder`.
+
+## Development
+
+Install the test dependencies and run the tests:
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
+
+The tests run the real app headless, with `wf-recorder`, `slurp`, `zenity`, `xdg-open` and the other external programs replaced by small fakes, so they never record your screen or touch your files and settings. They take about 40 seconds, mostly for the countdown tests. `ffmpeg` is used to create a sample video if it's installed; without it, the video-length test is skipped.
 
 ## License
 
