@@ -1,0 +1,64 @@
+Screen { align-horizontal: center; }
+#main { width: 100%; max-width: 110; height: 1fr; padding: 1 2 0 2; }
+
+.card {
+    border: round $primary 40%;
+    border-title-color: $text-muted;
+    border-title-style: bold;
+    padding: 0 1;
+    margin-bottom: 1;
+    height: auto;
+}
+
+/* ---- status ---------------------------------------------------------- */
+
+#status-card { padding: 0 2; }
+#status { text-style: bold; color: $success; }
+#status-hint { color: $text-muted; }
+#status-card.recording { border: round $error; background: $error 10%; }
+#status-card.recording #status { color: $error; }
+#status-card.counting { border: round $warning; background: $warning 10%; }
+#status-card.counting #status { color: $warning; }
+
+/* ---- main buttons ---------------------------------------------------- */
+
+#buttons { height: auto; margin-bottom: 1; }
+#buttons Button { width: 1fr; margin: 0 1 0 0; }
+#buttons Button:last-of-type { margin-right: 0; }
+#buttons #cycle_countdown { width: 14; min-width: 14; }
+Button:focus { text-style: bold; }
+
+/* ---- output: label | field | button, every row shares the same columns */
+
+#output {
+    layout: grid;
+    grid-size: 3;
+    grid-columns: 8 1fr 16;
+    grid-rows: 3;
+    grid-gutter: 1 1;
+    padding: 1 2 0 2;
+}
+#output > Label { height: 3; content-align: left middle; color: $text-muted; }
+#output Input, #browse { width: 100%; }
+#name, #audio { column-span: 2; }
+#audio { layout: horizontal; width: 100%; height: 3; }
+#audio RadioButton { width: auto; margin-right: 4; }
+/* the cursor highlight is only useful while navigating with the keyboard */
+#audio:blur > RadioButton.-selected > .toggle--label { background: transparent; }
+
+/* ---- recordings / activity tabs --------------------------------------- */
+
+#bottom { height: 1fr; min-height: 10; }
+#bottom TabPane { padding: 0; }
+#bottom RichLog, #recent {
+    height: 1fr;
+    background: transparent;
+    scrollbar-size-vertical: 1;
+    scrollbar-background: $surface;
+    scrollbar-color: $primary 40%;
+}
+#empty { color: $text-muted; padding: 1 1; }
+#rec-actions { height: auto; }
+#rec-actions Button { width: 1fr; min-width: 10; margin: 0 1 0 0; }
+#rec-actions Button:last-of-type { margin-right: 0; }
+#delete { color: $error; }

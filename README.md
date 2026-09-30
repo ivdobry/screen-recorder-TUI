@@ -148,7 +148,24 @@ Your settings are saved to `~/.config/screen-recorder-tui/config.json` and resto
 - **Countdown**: the countdown length
 - **Recordings**: the list of recent recordings
 
-The file name is not remembered, so each session starts with the timestamp default. To reset everything, delete the config file. The built-in default folder (`~/Videos`) is `OUTPUT_DIR` at the top of `recorder.py`.
+The file name is not remembered, so each session starts with the timestamp default. To reset everything, delete the config file. The built-in defaults (such as the `~/Videos` folder) are at the top of `screen_recorder/config.py`.
+
+## Project layout
+
+```
+screen_recorder/
+  app.py         the app: layout, recording flow, actions
+  app.tcss       styles
+  recordings.py  the Recordings tab
+  dialogs.py     folder browser, rename and delete dialogs
+  config.py      settings and the recent recordings list
+  system.py      calls to other programs (wf-recorder helpers, slurp, pactl, xdg-open, …)
+  util.py        small helpers
+run.sh           starts the app with the project's virtualenv
+install.sh       installs the screen-recorder command
+```
+
+Run it from the project folder with `./run.sh`, or `.venv/bin/python -m screen_recorder`.
 
 ## License
 
