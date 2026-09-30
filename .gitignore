@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Recordings
+*.mp4
+*.mkv
+*.webm
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
