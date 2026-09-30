@@ -27,7 +27,11 @@ Built with [Textual](https://textual.textualize.io/).
 On Arch Linux:
 
 ```bash
-sudo pacman -S wf-recorder slurp libnotify zenity
+# Required
+sudo pacman -S wf-recorder slurp
+
+# Optional: desktop notifications and the graphical Save as dialog
+sudo pacman -S libnotify zenity
 ```
 
 ## Installation
