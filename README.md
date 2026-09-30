@@ -14,6 +14,7 @@ Built with [Textual](https://textual.textualize.io/).
 - Audio source: **Off**, **Microphone** (default input) or **System sound** (what's playing through your speakers)
 - Live timer while recording
 - Desktop notification with the file path when a recording is saved
+- **Recordings** list of your latest recordings: play, show in folder, copy path, rename or delete
 - Choose the folder (with folder-name suggestions) and file name for each recording, or keep the defaults: `~/Videos/recording-YYYYMMDD-HHMMSS.mp4`
 
 ## Requirements
@@ -23,6 +24,9 @@ Built with [Textual](https://textual.textualize.io/).
 - [`slurp`](https://github.com/emersion/slurp) (for region selection)
 - `notify-send` (optional, from `libnotify`, for desktop notifications)
 - `zenity` (optional, for the graphical *Save as* dialog)
+- `ffprobe` (optional, from `ffmpeg`, to show recording lengths)
+- `wl-copy` (optional, from `wl-clipboard`, for *Copy path*; otherwise the terminal's clipboard support is used)
+- `xdg-open` (optional, from `xdg-utils`, to play recordings and open their folder; usually already installed)
 
 On Arch Linux:
 
@@ -30,8 +34,8 @@ On Arch Linux:
 # Required
 sudo pacman -S wf-recorder slurp
 
-# Optional: desktop notifications and the graphical Save as dialog
-sudo pacman -S libnotify zenity
+# Optional: notifications, Save as dialog, recording lengths, clipboard
+sudo pacman -S libnotify zenity ffmpeg wl-clipboard
 ```
 
 ## Installation
@@ -101,6 +105,20 @@ System sound needs `pactl` (included with PipeWire/PulseAudio). The output devic
 
 Recording the microphone and system sound at the same time isn't supported yet, because wf-recorder only records from one audio device.
 
+### Recordings
+
+The **Recordings** tab at the bottom lists the last 20 recordings made with the app, newest first. After you stop a recording, it switches to this tab with the new file selected. Use `↑`/`↓` to pick one, then:
+
+| Key            | Action                                                        |
+|----------------|---------------------------------------------------------------|
+| `P` or `Enter` | Play it in your default video player                          |
+| `O`            | Open its folder in your file manager, with the file selected  |
+| `C`            | Copy its full path to the clipboard                           |
+| `N`            | Rename it (the extension is kept if you leave it out)         |
+| `D`            | Delete it after you confirm: moved to the Trash with `gio trash`, or deleted permanently if `gio` is missing (the dialog says which) |
+
+Files you move or delete outside the app disappear from the list automatically. The **Activity** tab shows the commands that were run and any errors.
+
 ### Tips
 
 - A full-screen recording includes the terminal running the TUI. Switch to another workspace after starting, or use **Section** to leave it out.
@@ -119,6 +137,7 @@ Your settings are saved to `~/.config/screen-recorder-tui/config.json` and resto
 - **Theme**: press `Ctrl+P` → *Change theme*
 - **Save to folder**: the last existing folder you typed or picked with Browse
 - **Audio**: the selected audio source
+- **Recordings**: the list of recent recordings
 
 The file name is not remembered, so each session starts with the timestamp default. To reset everything, delete the config file. The built-in default folder (`~/Videos`) is `OUTPUT_DIR` at the top of `recorder.py`.
 
