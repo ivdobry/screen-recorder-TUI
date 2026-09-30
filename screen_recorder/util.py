@@ -3,6 +3,8 @@
 from datetime import datetime
 from pathlib import Path
 
+from rich.color import Color, ColorParseError
+from rich.text import Text
 from textual.suggester import Suggester
 
 
@@ -32,6 +34,51 @@ def human_size(size: float) -> str:
         if size < 1024 or unit == "GB":
             return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
         size /= 1024
+
+
+# The logo (docs/logo.svg) as pixels: selection corners (B) around a record
+# button shaped like a cat (R), with its eyes left as holes
+LOGO_PIXELS = [
+    "BB..R..R..BB",
+    "B...RRRR...B",
+    "...R.RR.R...",
+    "...RRRRRR...",
+    "B...RRRR...B",
+    "BB........BB",
+]
+
+
+def rich_color(value: str, fallback: str) -> str:
+    """A theme colour as a colour Rich understands.
+
+    The ANSI themes use the terminal's own palette, which Textual names "ansi_red",
+    "ansi_default", …; Rich calls those "red", "default". Anything else unreadable
+    becomes `fallback`.
+    """
+    value = value.removeprefix("ansi_")
+    try:
+        Color.parse(value)
+    except ColorParseError:
+        return fallback
+    return value
+
+
+def pixel_art(pixels: list[str], colors: dict[str, str]) -> Text:
+    """Draw coloured pixels two rows per line with half blocks ('.' = transparent)."""
+    art = Text()
+    for i, (top, bottom) in enumerate(zip(pixels[0::2], pixels[1::2])):
+        if i:
+            art.append("\n")
+        for t, b in zip(top, bottom):
+            if t == "." and b == ".":
+                art.append(" ")
+            elif b == "." or t == b:
+                art.append("▀" if b == "." else "█", style=colors[t])
+            elif t == ".":
+                art.append("▄", style=colors[b])
+            else:
+                art.append("▀", style=f"{colors[t]} on {colors[b]}")
+    return art
 
 
 class DirectorySuggester(Suggester):

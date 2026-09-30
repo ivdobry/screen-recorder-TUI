@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.svg" width="160" alt="Screen Recorder TUI logo">
+</p>
+
 # screen-recorder-TUI
 
 A small terminal UI for [wf-recorder](https://github.com/ammen99/wf-recorder) on Wayland (wlroots-based compositors such as niri, Hyprland, Sway). Start a full-screen or region recording and stop it from one screen, with no commands to remember.

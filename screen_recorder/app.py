@@ -20,7 +20,9 @@ from textual.worker import Worker
 from . import config, system
 from .dialogs import ConfirmDelete, FolderPicker, RenameScreen
 from .recordings import RecordingsPane
-from .util import DirectorySuggester, default_name, tilde, unique_path
+from .util import (
+    LOGO_PIXELS, DirectorySuggester, default_name, pixel_art, rich_color, tilde, unique_path,
+)
 
 
 class State(Enum):
@@ -61,12 +63,14 @@ class Recorder(App):
 
     def compose(self) -> ComposeResult:
         # Widgets with the "lock" class are disabled during a countdown or recording
-        yield Header(icon="◉")
+        yield Header(icon="◉")  # the icon opens the command palette (themes, …)
         with Vertical(id="main"):
-            with Vertical(id="status-card", classes="card") as card:
-                card.border_title = "Status"
-                yield Static(id="status")
-                yield Static(id="status-hint")
+            with Horizontal(id="top"):
+                yield Static(id="logo")
+                with Vertical(id="status-card", classes="card") as card:
+                    card.border_title = "Status"
+                    yield Static(id="status")
+                    yield Static(id="status-hint")
             with Horizontal(id="buttons"):
                 yield Button("▣  Full screen  [dim]F[/]", id="full", variant="primary", classes="lock")
                 yield Button("▢  Section  [dim]S[/]", id="region", variant="primary", classes="lock")
@@ -98,6 +102,7 @@ class Recorder(App):
             self.theme = self.settings["theme"]
         # Remember the theme picked from the command palette (Ctrl+P → "Change theme")
         self.watch(self, "theme", lambda theme: config.save_config(theme=theme), init=False)
+        self.watch(self, "theme", lambda _: self.draw_logo())
         if not system.available("wf-recorder"):
             self.log_line("[red]wf-recorder not found in PATH[/]")
         self.log_line("[dim]Tip: Enter or Esc leaves a text field so the shortcuts work again.[/]")
@@ -129,6 +134,19 @@ class Recorder(App):
         card.set_class(state is State.RECORDING, "recording")
         if state is State.IDLE:
             self.show_status("○  READY", "Press F for full screen or S to record a section")
+
+    def draw_logo(self) -> None:
+        # Pixel art needs real colours, so take them from the current theme
+        colors = self.get_css_variables()
+        # A blank pixel row above and below shifts the 3-line logo down half a line, so it
+        # spans the 4-line Status card from its top border line to its bottom one
+        blank = "." * len(LOGO_PIXELS[0])
+        self.query_one("#logo", Static).update(
+            pixel_art([blank, *LOGO_PIXELS, blank], {
+                "B": rich_color(colors["foreground"], "default"),
+                "R": rich_color(colors["error"], "red"),
+            })
+        )
 
     def show_status(self, title: str, hint: str) -> None:
         self.query_one("#status", Static).update(title)

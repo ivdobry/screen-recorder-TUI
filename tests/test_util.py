@@ -40,3 +40,29 @@ def test_directory_suggester(tmp_path):
     assert asyncio.run(suggest(f"{tmp_path}/Va")) == f"{tmp_path}/Vault"
     assert asyncio.run(suggest(f"{tmp_path}/Videos")) is None  # already complete
     assert asyncio.run(suggest(f"{tmp_path}/nope")) is None
+
+
+def test_logo_pixel_art():
+    from screen_recorder.util import LOGO_PIXELS, pixel_art
+    art = pixel_art(LOGO_PIXELS, {"B": "white", "R": "red"})
+    assert art.plain.splitlines() == [
+        "█▀  █▄▄█  ▀█",  # ears
+        "   █▄██▄█   ",  # eyes
+        "█▄  ▀▀▀▀  ▄█",  # chin
+    ]
+    assert {str(span.style) for span in art.spans} == {"white", "red"}
+
+
+def test_pixel_art_two_colours_in_one_cell():
+    from screen_recorder.util import pixel_art
+    art = pixel_art(["A", "B"], {"A": "red", "B": "blue"})
+    assert art.plain == "▀" and str(art.spans[0].style) == "red on blue"
+
+
+def test_rich_color():
+    from screen_recorder.util import rich_color
+    assert rich_color("#ABB2BF", "red") == "#ABB2BF"
+    assert rich_color("ansi_red", "x") == "red"  # the ANSI themes' colour names
+    assert rich_color("ansi_default", "x") == "default"
+    assert rich_color("ansi_bright_red", "x") == "bright_red"
+    assert rich_color("auto 60%", "red") == "red"  # not a colour at all
