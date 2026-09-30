@@ -321,7 +321,8 @@ class Recorder(App):
     ]
 
     proc: asyncio.subprocess.Process | None = None
-    countdown = None  # the countdown worker, while one is running
+    counting = False  # True only while a countdown is running
+    countdown = None  # that countdown's worker, so X can cancel it
     started_at = 0.0
     current_file: Path | None = None
 
@@ -657,13 +658,13 @@ class Recorder(App):
         self.push_screen(FolderPicker(folder), picked)
 
     def busy(self) -> bool:
-        return bool(self.proc) or self.countdown is not None
+        return bool(self.proc) or self.counting
 
     async def action_full(self) -> None:
         if self.busy():
             return
         output = await focused_output()
-        self.begin(["-o", output] if output else [])
+        await self.begin(["-o", output] if output else [])
 
     async def action_region(self) -> None:
         if self.busy():
@@ -676,32 +677,37 @@ class Recorder(App):
         if code != 0 or not geometry:
             self.log_line("[yellow]Selection cancelled[/]")
             return
-        self.begin(["-g", geometry])
+        await self.begin(["-g", geometry])
 
-    def begin(self, extra_args: list[str]) -> None:
+    async def begin(self, extra_args: list[str]) -> None:
         """Start recording, after the countdown if one is set."""
-        # A worker, so the app keeps handling keys (X cancels) while it counts down
-        self.countdown = self.run_worker(self.count_down_then_start(extra_args), group="countdown")
-
-    async def count_down_then_start(self, extra_args: list[str]) -> None:
         seconds = self.countdown_seconds()
+        if not seconds:
+            await self.start(extra_args)
+            return
+        # Set before the worker exists: Textual may run the worker's first steps
+        # immediately (eager tasks), so nothing may depend on the order of these lines
+        self.counting = True
+        self.set_recording(True, counting=True)
+        # A worker, so the app keeps handling keys (X cancels) while it counts down
+        self.countdown = self.run_worker(self.count_down_then_start(seconds, extra_args),
+                                         group="countdown")
+
+    async def count_down_then_start(self, seconds: int, extra_args: list[str]) -> None:
         try:
-            if seconds:
-                self.set_recording(True, counting=True)
-                if shutil.which("notify-send"):
-                    spawn("notify-send", "-t", str(seconds * 1000), "Screen Recorder",
-                          f"Recording starts in {seconds} s")
-                for left in range(seconds, 0, -1):
-                    self.query_one("#status", Static).update(f"◔  STARTING IN {left}…")
-                    self.query_one("#status-hint", Static).update("Press X to cancel")
-                    await asyncio.sleep(1)
-                self.set_recording(False)
+            if shutil.which("notify-send"):
+                spawn("notify-send", "-t", str(seconds * 1000), "Screen Recorder",
+                      f"Recording starts in {seconds} s")
+            for left in range(seconds, 0, -1):
+                self.query_one("#status", Static).update(f"◔  STARTING IN {left}…")
+                self.query_one("#status-hint", Static).update("Press X to cancel")
+                await asyncio.sleep(1)
         except asyncio.CancelledError:
-            self.set_recording(False)
             self.log_line("[yellow]Countdown cancelled[/]")
             raise
         finally:
-            self.countdown = None
+            self.counting = False
+            self.set_recording(False)
         await self.start(extra_args)
 
     async def start(self, extra_args: list[str]) -> None:
@@ -763,8 +769,9 @@ class Recorder(App):
             self.query_one("#bottom", TabbedContent).active = "tab-activity"
 
     async def action_stop(self) -> None:
-        if self.countdown is not None:
-            self.countdown.cancel()
+        if self.counting:
+            if self.countdown is not None:
+                self.countdown.cancel()
             return
         if self.proc and self.proc.returncode is None:
             self.log_line("Stopping…")
