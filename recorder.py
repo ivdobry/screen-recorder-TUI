@@ -20,6 +20,22 @@ from textual.widgets import (
 OUTPUT_DIR = Path.home() / "Videos"
 # --no-zenity: always use the in-terminal folder browser (handy for testing it)
 USE_ZENITY = "--no-zenity" not in sys.argv
+CONFIG_FILE = Path.home() / ".config" / "screen-recorder-tui" / "config.json"
+
+
+def load_config() -> dict:
+    try:
+        return json.loads(CONFIG_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def save_config(**changes) -> None:
+    try:
+        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG_FILE.write_text(json.dumps({**load_config(), **changes}, indent=2))
+    except OSError:
+        pass  # not worth crashing the recorder over
 
 
 async def run(*cmd: str) -> tuple[int, str]:
@@ -143,6 +159,7 @@ class Recorder(App):
     current_file: Path | None = None
 
     def compose(self) -> ComposeResult:
+        config = load_config()
         yield Header()
         yield Static("● Idle", id="status")
         with Horizontal(id="buttons"):
@@ -151,17 +168,24 @@ class Recorder(App):
             yield Button("Stop [X]", id="stop", variant="error", disabled=True)
         with Horizontal(id="save"):
             yield Label("Save to")
-            yield Input(self.tilde(OUTPUT_DIR), id="dir", suggester=DirectorySuggester())
+            yield Input(
+                config.get("folder", self.tilde(OUTPUT_DIR)), id="dir", suggester=DirectorySuggester()
+            )
             yield Label("Name")
             yield Input(placeholder="recording-<date>-<time> (default)", id="name")
             yield Button("Browse [B]", id="browse")
         with Horizontal(id="options"):
             yield Label("Record audio")
-            yield Switch(id="audio")
+            yield Switch(config.get("audio", False), id="audio")
         yield RichLog(markup=True, wrap=True)
         yield Footer()
 
     def on_mount(self) -> None:
+        theme = load_config().get("theme")
+        if theme in self.available_themes:
+            self.theme = theme
+        # Remember the theme picked from the command palette (Ctrl+P → "Change theme")
+        self.watch(self, "theme", lambda theme: save_config(theme=theme), init=False)
         if not shutil.which("wf-recorder"):
             self.log_line("[red]wf-recorder not found in PATH[/]")
         self.log_line("Set a folder and name, or leave them as they are. Enter/Esc returns to the shortcuts.")
@@ -175,6 +199,14 @@ class Recorder(App):
             return "~/" + str(path.relative_to(Path.home()))
         except ValueError:
             return str(path)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        # Only remember real folders, not half-typed paths
+        if event.input.id == "dir" and Path(event.value.strip()).expanduser().is_dir():
+            save_config(folder=event.value.strip())
+
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        save_config(audio=event.value)
 
     def on_input_submitted(self) -> None:
         self.set_focus(None)  # give the keys back to the F/S/X shortcuts

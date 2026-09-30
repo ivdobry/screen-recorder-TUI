@@ -75,4 +75,10 @@ You can also click the buttons with the mouse.
 
 ## Configuration
 
-To change the default folder, edit `OUTPUT_DIR` at the top of `recorder.py`.
+Your settings are saved to `~/.config/screen-recorder-tui/config.json` and restored the next time you start the app:
+
+- **Theme**: press `Ctrl+P` → *Change theme*
+- **Save to folder**: the last existing folder you typed or picked with Browse
+- **Audio**: whether the audio toggle is on
+
+The file name is not remembered, so each session starts with the timestamp default. To reset everything, delete the config file. The built-in default folder (`~/Videos`) is `OUTPUT_DIR` at the top of `recorder.py`.
