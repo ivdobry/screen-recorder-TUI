@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Grid, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.suggester import Suggester
 from textual.widgets import (
@@ -132,18 +132,51 @@ class FolderPicker(ModalScreen[Path | None]):
 class Recorder(App):
     TITLE = "Screen Recorder"
     CSS = """
-    #status { padding: 1 2; text-style: bold; }
-    #status.recording { background: $error; color: $text; }
-    #buttons { height: auto; padding: 0 1; }
-    #buttons Button { margin: 0 1; }
-    #options { height: auto; padding: 1 2; }
-    #options Label { padding: 1 1 0 0; }
-    #save { height: auto; padding: 0 2; }
-    #save Label { padding: 1 1 0 0; }
-    #dir { width: 2fr; }
-    #name { width: 1fr; }
-    #browse { min-width: 12; margin-left: 1; }
-    RichLog { border: round $secondary; margin: 0 1; }
+    Screen { align-horizontal: center; }
+    #main { width: 100%; max-width: 110; height: 1fr; padding: 1 2 0 2; }
+
+    .card {
+        border: round $primary 40%;
+        border-title-color: $text-muted;
+        border-title-style: bold;
+        padding: 0 1;
+        margin-bottom: 1;
+        height: auto;
+    }
+
+    #status-card { padding: 0 2; }
+    #status { text-style: bold; color: $success; }
+    #status-hint { color: $text-muted; }
+    #status-card.recording { border: round $error; background: $error 10%; }
+    #status-card.recording #status { color: $error; }
+
+    #buttons { height: auto; margin-bottom: 1; }
+    #buttons Button { width: 1fr; margin: 0 1 0 0; }
+    #buttons Button:last-of-type { margin-right: 0; }
+    Button:focus { text-style: bold; }
+
+    /* label | field | button — every row shares the same columns */
+    #output {
+        layout: grid;
+        grid-size: 3;
+        grid-columns: 8 1fr 16;
+        grid-rows: 3;
+        grid-gutter: 1 1;
+        padding: 1 2 0 2;
+    }
+    #output > Label { height: 3; content-align: left middle; color: $text-muted; }
+    #output Input, #browse { width: 100%; }
+    #name, #audio-row { column-span: 2; }
+    #audio-row { height: 3; }
+    #audio-row Label { height: 3; content-align: left middle; padding: 0 1; }
+
+    #activity { height: 1fr; min-height: 6; margin-bottom: 0; }
+    #activity RichLog {
+        background: transparent;
+        scrollbar-size-vertical: 1;
+        scrollbar-background: $surface;
+        scrollbar-color: $primary 40%;
+    }
     """
     BINDINGS = [
         ("f", "full", "Full screen"),
@@ -160,24 +193,34 @@ class Recorder(App):
 
     def compose(self) -> ComposeResult:
         config = load_config()
-        yield Header()
-        yield Static("● Idle", id="status")
-        with Horizontal(id="buttons"):
-            yield Button(r"Full screen \[F]", id="full", variant="primary")
-            yield Button(r"Section \[S]", id="region", variant="primary")
-            yield Button(r"Stop \[X]", id="stop", variant="error", disabled=True)
-        with Horizontal(id="save"):
-            yield Label("Save to")
-            yield Input(
-                config.get("folder", self.tilde(OUTPUT_DIR)), id="dir", suggester=DirectorySuggester()
-            )
-            yield Label("Name")
-            yield Input(placeholder="recording-<date>-<time> (default)", id="name")
-            yield Button(r"Browse \[B]", id="browse")
-        with Horizontal(id="options"):
-            yield Label("Record audio")
-            yield Switch(config.get("audio", False), id="audio")
-        yield RichLog(markup=True, wrap=True)
+        yield Header(icon="◉")
+        with Vertical(id="main"):
+            with Vertical(id="status-card", classes="card") as card:
+                card.border_title = "Status"
+                yield Static(id="status")
+                yield Static(id="status-hint")
+            with Horizontal(id="buttons"):
+                yield Button("▣  Full screen  [dim]F[/]", id="full", variant="primary")
+                yield Button("▢  Section  [dim]S[/]", id="region", variant="primary")
+                yield Button("■  Stop  [dim]X[/]", id="stop", variant="error", disabled=True)
+            with Grid(id="output", classes="card") as card:
+                card.border_title = "Output"
+                yield Label("Folder")
+                yield Input(
+                    config.get("folder", self.tilde(OUTPUT_DIR)),
+                    id="dir",
+                    suggester=DirectorySuggester(),
+                )
+                yield Button("Browse  [dim]B[/]", id="browse")
+                yield Label("Name")
+                yield Input(placeholder="recording-<date>-<time>  (default)", id="name")
+                yield Label("Audio")
+                with Horizontal(id="audio-row"):
+                    yield Switch(config.get("audio", False), id="audio")
+                    yield Label("Record audio  [dim]A[/]")
+            with Vertical(id="activity", classes="card") as card:
+                card.border_title = "Activity"
+                yield RichLog(markup=True, wrap=True)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -188,7 +231,9 @@ class Recorder(App):
         self.watch(self, "theme", lambda theme: save_config(theme=theme), init=False)
         if not shutil.which("wf-recorder"):
             self.log_line("[red]wf-recorder not found in PATH[/]")
-        self.log_line("Set a folder and name, or leave them as they are. Enter/Esc returns to the shortcuts.")
+        self.log_line("[dim]Tip: Enter or Esc leaves a text field so the shortcuts work again.[/]")
+        self.set_recording(False)
+        self.set_focus(None)  # nothing focused, so the single-key shortcuts work at once
         self.set_interval(1, self.tick)
 
     # ---- UI helpers -------------------------------------------------------
@@ -234,17 +279,19 @@ class Recorder(App):
         self.query_one("#dir", Input).disabled = recording
         self.query_one("#name", Input).disabled = recording
         self.query_one("#browse", Button).disabled = recording
-        status = self.query_one("#status", Static)
-        status.set_class(recording, "recording")
+        self.query_one("#status-card").set_class(recording, "recording")
         if not recording:
-            status.update("● Idle")
+            self.query_one("#status", Static).update("○  READY")
+            self.query_one("#status-hint", Static).update(
+                "Press F for full screen or S to record a section"
+            )
 
     def tick(self) -> None:
         if self.proc:
             elapsed = int(time.monotonic() - self.started_at)
-            self.query_one("#status", Static).update(
-                f"● REC  {elapsed // 60:02d}:{elapsed % 60:02d}  →  {self.current_file.name}"
-            )
+            dot = "●" if elapsed % 2 == 0 else "○"  # blink
+            self.query_one("#status", Static).update(f"{dot}  REC  {elapsed // 60:02d}:{elapsed % 60:02d}")
+            self.query_one("#status-hint", Static).update(f"→ {self.tilde(self.current_file)}")
 
     # ---- actions ----------------------------------------------------------
 
