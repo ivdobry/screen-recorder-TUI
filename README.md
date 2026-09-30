@@ -121,3 +121,7 @@ Your settings are saved to `~/.config/screen-recorder-tui/config.json` and resto
 - **Audio**: the selected audio source
 
 The file name is not remembered, so each session starts with the timestamp default. To reset everything, delete the config file. The built-in default folder (`~/Videos`) is `OUTPUT_DIR` at the top of `recorder.py`.
+
+## License
+
+[MIT](LICENSE) © 2026 ivdobry
