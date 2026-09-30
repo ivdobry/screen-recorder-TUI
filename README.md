@@ -12,7 +12,7 @@ Built with [Textual](https://textual.textualize.io/).
 - Optional audio recording toggle
 - Live timer while recording
 - Desktop notification with the file path when a recording is saved
-- Recordings are saved to `~/Videos/recording-YYYYMMDD-HHMMSS.mp4`
+- Choose the folder (with folder-name suggestions) and file name for each recording, or keep the defaults: `~/Videos/recording-YYYYMMDD-HHMMSS.mp4`
 
 ## Requirements
 
@@ -20,11 +20,12 @@ Built with [Textual](https://textual.textualize.io/).
 - [`wf-recorder`](https://github.com/ammen99/wf-recorder)
 - [`slurp`](https://github.com/emersion/slurp) (for region selection)
 - `notify-send` (optional, from `libnotify`, for desktop notifications)
+- `zenity` (optional, for the graphical *Save as* dialog)
 
 On Arch Linux:
 
 ```bash
-sudo pacman -S wf-recorder slurp libnotify
+sudo pacman -S wf-recorder slurp libnotify zenity
 ```
 
 ## Installation
@@ -48,9 +49,18 @@ python -m venv .venv
 | `S` | Section      | `wf-recorder -g "$(slurp)" -f <file>`            |
 | `X` | Stop         | sends `SIGINT` to wf-recorder                    |
 | `A` | Toggle audio | adds `--audio`                                   |
+| `B` | Browse       | opens a file dialog to choose folder and name    |
 | `Q` | Quit         | stops any active recording first, then exits     |
 
 You can also click the buttons with the mouse.
+
+### Folder and name
+
+- **Save to**: the folder to save into (default `~/Videos`). `~` works, missing folders are created, and a suggested folder name can be accepted with `→`.
+- **Name**: the file name. Leave it empty to use `recording-YYYYMMDD-HHMMSS`. `.mp4` is added if you don't give an extension; give one (e.g. `demo.mkv`) to use a different format.
+- **Browse [B]** opens your system's *Save as* dialog (via `zenity`) to choose the folder and name. Without zenity, it opens a folder browser inside the terminal instead. Run `./run.sh --no-zenity` to always use the terminal browser.
+- If the file already exists, `-1`, `-2`, … is added to the name, so recordings are never overwritten.
+- Press `Enter` or `Esc` to leave a text field and use the keyboard shortcuts again.
 
 ### Tips
 
@@ -65,4 +75,4 @@ You can also click the buttons with the mouse.
 
 ## Configuration
 
-To change the output directory, edit `OUTPUT_DIR` at the top of `recorder.py`.
+To change the default folder, edit `OUTPUT_DIR` at the top of `recorder.py`.

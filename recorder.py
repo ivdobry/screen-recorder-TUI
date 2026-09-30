@@ -4,15 +4,22 @@ import asyncio
 import json
 import shutil
 import signal
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal
-from textual.widgets import Button, Footer, Header, RichLog, Static, Switch, Label
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.suggester import Suggester
+from textual.widgets import (
+    Button, DirectoryTree, Footer, Header, Input, Label, RichLog, Static, Switch,
+)
 
 OUTPUT_DIR = Path.home() / "Videos"
+# --no-zenity: always use the in-terminal folder browser (handy for testing it)
+USE_ZENITY = "--no-zenity" not in sys.argv
 
 
 async def run(*cmd: str) -> tuple[int, str]:
@@ -40,6 +47,72 @@ async def focused_output() -> str | None:
     return None
 
 
+class DirectorySuggester(Suggester):
+    """Inline completion of directory names (accept with →)."""
+
+    def __init__(self) -> None:
+        super().__init__(use_cache=False, case_sensitive=True)
+
+    async def get_suggestion(self, value: str) -> str | None:
+        head, _, prefix = value.rpartition("/")
+        parent = Path(head or "/").expanduser() if "/" in value else Path.cwd()
+        try:
+            matches = sorted(
+                d.name for d in parent.iterdir()
+                if d.is_dir() and d.name.startswith(prefix) and not d.name.startswith(".")
+            )
+        except OSError:
+            return None
+        if not matches or matches[0] == prefix:
+            return None
+        return f"{head}/{matches[0]}" if "/" in value else matches[0]
+
+
+def unique_path(path: Path) -> Path:
+    """Add -1, -2, … to the name so an existing recording is never overwritten."""
+    candidate, n = path, 1
+    while candidate.exists():
+        candidate = path.with_stem(f"{path.stem}-{n}")
+        n += 1
+    return candidate
+
+
+class FolderPicker(ModalScreen[Path | None]):
+    """In-terminal folder browser, used when no graphical file dialog is available."""
+
+    CSS = """
+    FolderPicker { align: center middle; }
+    #picker { width: 80%; height: 80%; border: round $accent; background: $surface; padding: 0 1; }
+    #picker DirectoryTree { height: 1fr; }
+    #picker Horizontal { height: auto; align-horizontal: right; }
+    #picker Button { margin: 0 1; }
+    """
+    BINDINGS = [("escape", "dismiss(None)", "Cancel")]
+
+    class FoldersOnly(DirectoryTree):
+        def filter_paths(self, paths):
+            return [p for p in paths if p.is_dir() and not p.name.startswith(".")]
+
+    def __init__(self, start: Path) -> None:
+        super().__init__()
+        self.selected = start
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="picker"):
+            yield Label(f"Choose a folder: [cyan]{self.selected}[/]", id="current")
+            yield self.FoldersOnly(Path.home(), id="tree")
+            with Horizontal():
+                yield Button("Cancel", id="cancel")
+                yield Button("Select", id="select", variant="primary")
+
+    def on_directory_tree_directory_selected(self, event: DirectoryTree.DirectorySelected) -> None:
+        self.selected = event.path
+        self.query_one("#current", Label).update(f"Choose a folder: [cyan]{event.path}[/]")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(self.selected if event.button.id == "select" else None)
+
+
 class Recorder(App):
     TITLE = "Screen Recorder"
     CSS = """
@@ -49,6 +122,11 @@ class Recorder(App):
     #buttons Button { margin: 0 1; }
     #options { height: auto; padding: 1 2; }
     #options Label { padding: 1 1 0 0; }
+    #save { height: auto; padding: 0 2; }
+    #save Label { padding: 1 1 0 0; }
+    #dir { width: 2fr; }
+    #name { width: 1fr; }
+    #browse { min-width: 12; margin-left: 1; }
     RichLog { border: round $secondary; margin: 0 1; }
     """
     BINDINGS = [
@@ -56,6 +134,7 @@ class Recorder(App):
         ("s", "region", "Section"),
         ("x", "stop", "Stop"),
         ("a", "toggle_audio", "Audio"),
+        ("b", "browse", "Browse"),
         ("q", "quit", "Quit"),
     ]
 
@@ -70,6 +149,12 @@ class Recorder(App):
             yield Button("Full screen [F]", id="full", variant="primary")
             yield Button("Section [S]", id="region", variant="primary")
             yield Button("Stop [X]", id="stop", variant="error", disabled=True)
+        with Horizontal(id="save"):
+            yield Label("Save to")
+            yield Input(self.tilde(OUTPUT_DIR), id="dir", suggester=DirectorySuggester())
+            yield Label("Name")
+            yield Input(placeholder="recording-<date>-<time> (default)", id="name")
+            yield Button("Browse [B]", id="browse")
         with Horizontal(id="options"):
             yield Label("Record audio")
             yield Switch(id="audio")
@@ -79,10 +164,32 @@ class Recorder(App):
     def on_mount(self) -> None:
         if not shutil.which("wf-recorder"):
             self.log_line("[red]wf-recorder not found in PATH[/]")
-        self.log_line(f"Recordings are saved to [cyan]{OUTPUT_DIR}[/]")
+        self.log_line("Set a folder and name, or leave them as they are. Enter/Esc returns to the shortcuts.")
         self.set_interval(1, self.tick)
 
     # ---- UI helpers -------------------------------------------------------
+
+    @staticmethod
+    def tilde(path: Path) -> str:
+        try:
+            return "~/" + str(path.relative_to(Path.home()))
+        except ValueError:
+            return str(path)
+
+    def on_input_submitted(self) -> None:
+        self.set_focus(None)  # give the keys back to the F/S/X shortcuts
+
+    def on_key(self, event) -> None:
+        if event.key == "escape" and isinstance(self.focused, Input):
+            self.set_focus(None)
+
+    def target_file(self) -> Path:
+        folder = Path(self.query_one("#dir", Input).value.strip() or OUTPUT_DIR).expanduser()
+        name = self.query_one("#name", Input).value.strip()
+        name = name or f"recording-{datetime.now():%Y%m%d-%H%M%S}"
+        if not Path(name).suffix:
+            name += ".mp4"
+        return unique_path(folder / name)
 
     def log_line(self, text: str) -> None:
         self.query_one(RichLog).write(text)
@@ -92,6 +199,9 @@ class Recorder(App):
         self.query_one("#region", Button).disabled = recording
         self.query_one("#stop", Button).disabled = not recording
         self.query_one("#audio", Switch).disabled = recording
+        self.query_one("#dir", Input).disabled = recording
+        self.query_one("#name", Input).disabled = recording
+        self.query_one("#browse", Button).disabled = recording
         status = self.query_one("#status", Static)
         status.set_class(recording, "recording")
         if not recording:
@@ -114,6 +224,39 @@ class Recorder(App):
         if not switch.disabled:
             switch.toggle()
 
+    async def action_browse(self) -> None:
+        if self.proc:
+            return
+        folder_input = self.query_one("#dir", Input)
+        name_input = self.query_one("#name", Input)
+        folder = Path(folder_input.value.strip() or OUTPUT_DIR).expanduser()
+        if not folder.is_dir():
+            folder = Path.home()
+
+        if USE_ZENITY and shutil.which("zenity"):
+            # Native "Save as" dialog: pick the folder and the file name in one go
+            default = f"recording-{datetime.now():%Y%m%d-%H%M%S}.mp4"
+            name = name_input.value.strip() or default
+            code, chosen = await run(
+                "zenity", "--file-selection", "--save",
+                "--title=Save recording as", f"--filename={folder / name}",
+            )
+            if code != 0 or not chosen:
+                return
+            chosen_path = Path(chosen)
+            folder_input.value = self.tilde(chosen_path.parent)
+            # Keeping the suggested timestamp name means "use the default": leave Name empty
+            name_input.value = "" if chosen_path.name == default else chosen_path.name
+            self.log_line(f"Will save to [cyan]{chosen_path}[/]")
+            return
+
+        def picked(path: Path | None) -> None:
+            if path:
+                folder_input.value = self.tilde(path)
+                self.log_line(f"Will save to [cyan]{path}[/]")
+
+        self.push_screen(FolderPicker(folder), picked)
+
     async def action_full(self) -> None:
         if self.proc:
             return
@@ -134,8 +277,13 @@ class Recorder(App):
         await self.start(["-g", geometry])
 
     async def start(self, extra_args: list[str]) -> None:
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        self.current_file = OUTPUT_DIR / f"recording-{datetime.now():%Y%m%d-%H%M%S}.mp4"
+        target = self.target_file()
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            self.log_line(f"[red]Can't use folder {target.parent}: {e.strerror}[/]")
+            return
+        self.current_file = target
         cmd = ["wf-recorder", "-y", *extra_args, "-f", str(self.current_file)]
         if self.query_one("#audio", Switch).value:
             cmd.append("--audio")
